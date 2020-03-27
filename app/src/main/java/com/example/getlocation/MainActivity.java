@@ -2,26 +2,17 @@ package com.example.getlocation;
 
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
-import android.Manifest;
 import android.app.Dialog;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.TaskStackBuilder;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
-import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -29,27 +20,30 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.Geofence;
-import com.google.android.gms.location.GeofenceStatusCodes;
 import com.google.android.gms.location.GeofencingClient;
-import com.google.android.gms.location.GeofencingEvent;
 import com.google.android.gms.location.GeofencingRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.gms.tasks.Task;
 
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
-import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
+import static android.Manifest.permission.ACCESS_BACKGROUND_LOCATION;
+import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 
 
 public class MainActivity extends AppCompatActivity {
 
-
+    private double lat;
+    private double lon;
+    List<Double> CurrentPos = new ArrayList<Double>();
+    List<Geofence> geofenceList = new ArrayList<>();
     private final int REQUEST_RESOLVE_GOOGLE_CLIENT_ERROR=1;
+    private GeofencingClient geofencingClient;
     boolean mResolvingError;
+
     GoogleApiClient mGoogleApiClient;
 
     GoogleApiClient.ConnectionCallbacks mConnectionCallbacks =
@@ -57,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onConnected(Bundle bundle) {
                     Toast.makeText(MainActivity.this, "onConnected()", Toast.LENGTH_LONG).show();
+                    getLocation();
                 }
                 @Override
                 public void onConnectionSuspended(int i) {}
@@ -92,6 +87,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_RESOLVE_GOOGLE_CLIENT_ERROR) {
             mResolvingError = false;
             if (resultCode == RESULT_OK
@@ -115,16 +111,25 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        if (ActivityCompat.checkSelfPermission(this, ACCESS_COARSE_LOCATION)
+        if (ActivityCompat.checkSelfPermission(this, ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-            getLocation();
+            setupGoogleApiClient();
         } else {
-            ActivityCompat.requestPermissions(this, new String[] {ACCESS_COARSE_LOCATION},1);
+            ActivityCompat.requestPermissions(this, new String[] {ACCESS_FINE_LOCATION},1);
         }
-        setupGoogleApiClient();
+        if (ActivityCompat.checkSelfPermission(this, ACCESS_BACKGROUND_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            GetAddGeofences();
+        } else {
+            ActivityCompat.requestPermissions(this, new String[] {ACCESS_BACKGROUND_LOCATION},1);
+        }
 
+
+    } // onCreate end
+
+    private void GetAddGeofences(){
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            final GeofencingClient geofencingClient = LocationServices.getGeofencingClient(this);
+            geofencingClient = LocationServices.getGeofencingClient(this);
             geofencingClient.addGeofences(createGeofencingRequest(), createGeofencePendingIntent())
                     .addOnSuccessListener(this, new OnSuccessListener<Void>() {
                         @Override
@@ -144,16 +149,20 @@ public class MainActivity extends AppCompatActivity {
         } else {
             ActivityCompat.requestPermissions(this,
                     new String[] {android.Manifest.permission.ACCESS_FINE_LOCATION},1);
-        }
-    } // onCreate end
+        }}
 
 
+    private List getLocation() throws SecurityException {
 
-    private void getLocation() throws SecurityException {
         LocationServices.getFusedLocationProviderClient(this).getLastLocation()
                 .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                     @Override
                     public void onSuccess(Location location) {
+                        lat = location.getLatitude();
+                        lon = location.getLongitude();
+                        CurrentPos.add(lat);
+                        CurrentPos.add(lon);
+                        addCurrentLocToGeoList(geofenceList, (ArrayList) CurrentPos);
                         final TextView textView = findViewById(R.id.textView);
                         if (location != null) {
                             textView.setText(DateFormat.getTimeInstance()
@@ -166,17 +175,24 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 });
+    return CurrentPos;
+
     }
 
     private final int MINIMUM_RECOMENDED_RADIUS=100;
 
     private PendingIntent createGeofencePendingIntent() {
+        /* if (mCreateGeofencePendingIntent != null) {
+           return mCreateGeofencePendingIntent;
+        } */
         Intent intent = new Intent(this, GeofenceIntentService.class);
-        return PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return PendingIntent.getService(this, 0, intent, PendingIntent.
+                FLAG_UPDATE_CURRENT);
     }
 
     private List createGeofenceList() {
-        List<Geofence> geofenceList = new ArrayList<>();
+
+        //Location location = new Location(LocationManager.GPS_PROVIDER);
         geofenceList.add(new Geofence.Builder()
 
                 .setRequestId("Google HQ")
@@ -184,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
                         37.421998,  //Latitude
                         -122.084, //Longitude
                         MINIMUM_RECOMENDED_RADIUS)
-                .setLoiteringDelay(1)
+                .setLoiteringDelay(10*1000)
                 .setExpirationDuration(Geofence.NEVER_EXPIRE)
                 .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_DWELL)
                 .build());
@@ -194,13 +210,25 @@ public class MainActivity extends AppCompatActivity {
                         53.3433833,  //Latitude
                         -6.2690049, //Longitude
                         MINIMUM_RECOMENDED_RADIUS)
-                .setLoiteringDelay(1)
+                .setLoiteringDelay(10*1000)
                 .setExpirationDuration(Geofence.NEVER_EXPIRE)
                 .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_DWELL)
                 .build());
         return geofenceList;
     }
 
+    private List addCurrentLocToGeoList(List geofenceList, ArrayList<Double> CurrentPos) {
+        geofenceList.add(new Geofence.Builder()
+                .setRequestId("Current Location")
+                .setCircularRegion(CurrentPos.get(0), CurrentPos.get(1),
+                        MINIMUM_RECOMENDED_RADIUS)
+                .setLoiteringDelay(10*1000)
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_DWELL)
+                .build());
+        return geofenceList;
+
+    }
 
    private GeofencingRequest createGeofencingRequest() {
         GeofencingRequest.Builder builder = new GeofencingRequest.Builder();
@@ -209,6 +237,8 @@ public class MainActivity extends AppCompatActivity {
         builder.addGeofences(createGeofenceList());
         return builder.build();
     }
+
+
 
 
     public void onClick(View v) {
